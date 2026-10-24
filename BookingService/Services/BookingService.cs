@@ -146,7 +146,17 @@ public class BookingService
         _logger.LogInformation("Найдено бронирование: id={Id}, статус={Status}. Подтверждаем...",
             booking.Id, booking.Status);
 
-        booking.Confirm();
+        ConfirmBookingAsync(booking);
+
+        try
+        {
+            await _repository.SaveAsync(booking);
+        }
+        catch (DbUpdateConcurrencyException e)
+        {
+            ConfirmBookingAsync(booking);
+            await _repository.SaveAsync(booking);
+        }
 
         _logger.LogInformation("Бронирование успешно подтверждено: id={Id}, новый статус={Status}",
             booking.Id, booking.Status);
@@ -202,4 +212,15 @@ public class BookingService
     // TODO: Task 04 — возвращать историю изменений статусов для указанного бронирования
     public Task<List<Entities.BookingStatusHistory>> GetBookingHistory(long bookingId)
         => throw new NotImplementedException();
+
+    private void ConfirmBookingAsync(Booking booking)
+    {
+        if (booking.Status == BookingStatus.CancellationPending)
+        {
+            _logger.LogWarning("Ошибка при подтверждении бронирования. Бронирование находится в процессе отмены.");
+            return;
+        }
+
+        booking.Confirm();
+    }
 }

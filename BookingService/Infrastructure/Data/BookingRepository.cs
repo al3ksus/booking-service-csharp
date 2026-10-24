@@ -98,7 +98,13 @@ public class BookingRepository
         };
     }
 
-    // TODO: Task 03 — найти бронирования, застрявшие в CancellationPending
     public Task<List<Booking>> FindStuckCancellationsAsync(DateTimeOffset cancellationRequestedBefore)
-        => throw new NotImplementedException();
+    {
+        var now = DateTimeOffset.UtcNow;
+        
+        return _context.Bookings
+            .Where(b => b.Status == BookingStatus.CancellationPending)
+            .Where(b => b.CancellationRequestedAt <= cancellationRequestedBefore)
+            .ToListAsync();
+    }
 }

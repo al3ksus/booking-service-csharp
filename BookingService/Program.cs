@@ -1,5 +1,6 @@
 using BookingService.Configuration;
 using BookingService.Exceptions;
+using BookingService.Infrastructure.BackgroundJobs;
 using BookingService.Infrastructure.Data;
 using BookingService.Infrastructure.Messaging;
 using BookingService.Infrastructure.Messaging.Contracts;
@@ -43,6 +44,7 @@ builder.Services.AddScoped<BookingRepository>();
 builder.Services.AddScoped<BookingService.Services.BookingService>();
 builder.Services.AddScoped<BookingMapper>();
 builder.Services.AddSingleton<ICurrentDateTimeProvider, CurrentDateTimeProvider>();
+builder.Services.AddHostedService<StuckCancellationsJob>();
 
 // ---- Messaging (Rebus + RabbitMQ) ----
 builder.Services.AddSingleton(rabbitMqSettings);
