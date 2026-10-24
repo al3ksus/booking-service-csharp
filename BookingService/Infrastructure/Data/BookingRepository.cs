@@ -81,7 +81,7 @@ public class BookingRepository
         
         var topResources = await _context.Bookings
             .GroupBy(b => b.ResourceId)
-            .OrderBy(b => b.Count())
+            .OrderByDescending(b => b.Count())
             .Take(5)
             .Select(b => new ResourceCount
             {
@@ -89,15 +89,13 @@ public class BookingRepository
                 BookingCount = b.Count()
             })
             .ToListAsync();
-        
-        
-        
+
         return new StatisticsResponse
         {
             TotalCount = totalCount,
             ByStatus = byStatus,
             TopResources = topResources
-        }; 
+        };
     }
 
     // TODO: Task 03 — найти бронирования, застрявшие в CancellationPending
