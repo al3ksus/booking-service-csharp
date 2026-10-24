@@ -178,14 +178,26 @@ public class BookingService
             booking.Id, booking.Status);
     }
 
-    // TODO: Task 01 — откат отмены бронирования (компенсирующая транзакция)
-    public Task HandleCancellationError(Guid requestId) => throw new NotImplementedException();
+    /// <summary>
+    /// Откатить отмену бронирования.
+    /// </summary>
+    public async Task HandleCancellationError(Guid requestId)
+    {
+        var booking = await _repository.FindByCatalogRequestIdAsync(requestId)
+            ?? throw new BusinessException($"Бронирование с указанным requestId: '{requestId}' не найдено.");
+        
+        booking.RollbackCancellation();
+
+        await _repository.SaveAsync(booking);
+    }
 
     /// <summary>Устаревший метод-заглушка — используйте HandleCancellationError</summary>
     public Task HandleError(Guid requestId) => HandleCancellationError(requestId);
 
-    // TODO: Task 02 — реализовать агрегирующий запрос статистики бронирований
-    public Task<StatisticsResponse> GetStatistics() => throw new NotImplementedException();
+    public async Task<StatisticsResponse> GetStatistics()
+    {
+        return await _repository.GetStatisticsAsync();
+    }
 
     // TODO: Task 04 — возвращать историю изменений статусов для указанного бронирования
     public Task<List<Entities.BookingStatusHistory>> GetBookingHistory(long bookingId)
