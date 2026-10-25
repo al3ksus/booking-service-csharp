@@ -116,7 +116,8 @@ public class BookingRepository
     public async Task<List<BookingStatusHistory>> GetBookingHistoryAsync(long bookingId)
     {
         return await _context.BookingStatusHistories
-            .Where(h => h.Id == bookingId)
+            .Where(h => h.BookingId == bookingId)
+            .OrderByDescending(h => h.ChangedAt)
             .ToListAsync();
     }
 }
