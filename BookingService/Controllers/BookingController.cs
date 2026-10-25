@@ -66,4 +66,12 @@ public class BookingController : ControllerBase
     public async Task Cancel([FromRoute] long id)
         => await _bookingService.CancelBooking(id);
 
+    /// <summary>
+    /// Получить статистику по бронированиям
+    /// </summary>
+    [HttpGet("statistics")]
+    [ProducesResponseType<StatisticsResponse>(StatusCodes.Status200OK)]
+    public async Task<StatisticsResponse> GetStatistics()
+        => await _bookingService.GetStatistics();
+
 }
