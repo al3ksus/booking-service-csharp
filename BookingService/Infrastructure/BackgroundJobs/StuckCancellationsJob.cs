@@ -1,3 +1,4 @@
+using BookingService.Entities;
 using BookingService.Infrastructure.Data;
 using BookingService.Infrastructure.Messaging;
 using BookingService.Infrastructure.Messaging.Contracts;
@@ -29,16 +30,39 @@ public class StuckCancellationsJob : BackgroundService
             var bookingEventPublisher = scope.ServiceProvider.GetRequiredService<BookingEventPublisher>();
 
             var cancellationRequestedBefore = DateTimeOffset.UtcNow - _timeout;
-            var bookings = await bookingRepository.FindStuckCancellationsAsync(cancellationRequestedBefore);
+            List<Booking> bookings = [];
+            
+            try
+            {
+                bookings.AddRange(await bookingRepository.FindStuckCancellationsAsync(cancellationRequestedBefore));
+                
+                _logger.LogInformation("Found {BookingsCount} stuck cancellations", bookings.Count);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while trying to get stuck cancellations");
+            }
+
+            if (bookings.Count == 0)
+                return;
 
             foreach (var booking in bookings)
             {
-                if (booking.CatalogRequestId.HasValue)
+                if (!booking.CatalogRequestId.HasValue)
+                    continue;
+                
+                try
+                {
                     await bookingEventPublisher.PublishCancelBookingJob(
                         new CancelBookingJobByRequestIdRequest
                         {
                             RequestId = booking.CatalogRequestId.Value
                         });
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, "Error while trying to cancel booking");
+                }
             }
         }
     }

@@ -10,14 +10,6 @@ namespace BookingService.Infrastructure.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<uint>(
-                name: "xmin",
-                table: "bookings",
-                type: "xid",
-                rowVersion: true,
-                nullable: false,
-                defaultValue: 0u);
-
             migrationBuilder.CreateIndex(
                 name: "idx_bookings_cancellation_pending",
                 table: "bookings",
@@ -30,10 +22,6 @@ namespace BookingService.Infrastructure.Data.Migrations
         {
             migrationBuilder.DropIndex(
                 name: "idx_bookings_cancellation_pending",
-                table: "bookings");
-
-            migrationBuilder.DropColumn(
-                name: "xmin",
                 table: "bookings");
         }
     }
