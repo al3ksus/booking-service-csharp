@@ -110,12 +110,12 @@ public class BookingDbContext : DbContext
             var booking = bookingEntry.Entity;
             var statusProperty = bookingEntry.Property(b => b.Status);
 
-            if (statusProperty.CurrentValue == statusProperty.OriginalValue)
+            if (statusProperty.CurrentValue == statusProperty.OriginalValue && bookingEntry.State == EntityState.Modified)
                 continue;
             
             BookingStatusHistories.Add(BookingStatusHistory.Create(
                 booking.Id,
-                statusProperty.OriginalValue,
+                bookingEntry.State == EntityState.Modified ? statusProperty.OriginalValue : null,
                 statusProperty.CurrentValue));
         }
         

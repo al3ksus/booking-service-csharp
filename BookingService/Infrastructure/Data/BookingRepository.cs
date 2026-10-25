@@ -117,7 +117,7 @@ public class BookingRepository
     {
         return await _context.BookingStatusHistories
             .Where(h => h.BookingId == bookingId)
-            .OrderByDescending(h => h.ChangedAt)
+            .OrderBy(h => h.ChangedAt)
             .ToListAsync();
     }
 }
