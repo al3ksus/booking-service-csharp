@@ -16,11 +16,13 @@ public class BookingController : ControllerBase
 {
     private readonly Services.BookingService _bookingService;
     private readonly BookingMapper _mapper;
+    private readonly BookingStatusHistoryMapper _bookingStatusHistoryMapper;
 
-    public BookingController(Services.BookingService bookingService, BookingMapper mapper)
+    public BookingController(Services.BookingService bookingService, BookingMapper mapper, BookingStatusHistoryMapper bookingStatusHistoryMapper)
     {
         _bookingService = bookingService;
         _mapper = mapper;
+        _bookingStatusHistoryMapper = bookingStatusHistoryMapper;
     }
 
     /// <summary>Создать новое бронирование</summary>
@@ -65,5 +67,20 @@ public class BookingController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task Cancel([FromRoute] long id)
         => await _bookingService.CancelBooking(id);
+
+    /// <summary>
+    /// Получить статистику по бронированиям
+    /// </summary>
+    [HttpGet("statistics")]
+    [ProducesResponseType<StatisticsResponse>(StatusCodes.Status200OK)]
+    public async Task<StatisticsResponse> GetStatistics()
+        => await _bookingService.GetStatistics();
+
+    [HttpGet("{bookingId:long}/history")]
+    [ProducesResponseType<List<BookingStatusHistoryResponse>>(StatusCodes.Status200OK)]
+    public async Task<List<BookingStatusHistoryResponse>> GetBookingHistory(long bookingId)
+    {
+        return _bookingStatusHistoryMapper.ToResponseList(await _bookingService.GetBookingHistory(bookingId));
+    }
 
 }
