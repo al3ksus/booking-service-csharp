@@ -107,4 +107,10 @@ public class BookingRepository
             .Where(b => b.CancellationRequestedAt <= cancellationRequestedBefore)
             .ToListAsync();
     }
+
+    public async Task ReloadAsync(Booking booking)
+    {
+        await _context.Entry(booking).ReloadAsync();
+    }
+    
 }

@@ -44,7 +44,7 @@ public class StuckCancellationsJob : BackgroundService
             }
 
             if (bookings.Count == 0)
-                return;
+                continue;
 
             foreach (var booking in bookings)
             {

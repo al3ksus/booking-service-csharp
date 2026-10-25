@@ -154,11 +154,8 @@ public class BookingService
         }
         catch (DbUpdateConcurrencyException e)
         {
-            booking = await _repository.FindByCatalogRequestIdAsync(requestId);
-            
-            if (booking is null) 
-                return;
-            
+            await _repository.ReloadAsync(booking);
+
             ConfirmBookingAsync(booking);
             await _repository.SaveAsync(booking);
         }
