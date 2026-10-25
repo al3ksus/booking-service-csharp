@@ -113,7 +113,20 @@ namespace BookingService.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BookingId");
+
                     b.ToTable("booking_status_history", (string)null);
+                });
+
+            modelBuilder.Entity("BookingService.Entities.BookingStatusHistory", b =>
+                {
+                    b.HasOne("BookingService.Entities.Booking", "Booking")
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
                 });
 #pragma warning restore 612, 618
         }

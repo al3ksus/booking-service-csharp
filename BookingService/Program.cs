@@ -43,6 +43,7 @@ builder.Services.AddScoped<BookingRepository>();
 // ---- Business Services ----
 builder.Services.AddScoped<BookingService.Services.BookingService>();
 builder.Services.AddScoped<BookingMapper>();
+builder.Services.AddScoped<BookingStatusHistoryMapper>();
 builder.Services.AddSingleton<ICurrentDateTimeProvider, CurrentDateTimeProvider>();
 builder.Services.AddHostedService<StuckCancellationsJob>();
 

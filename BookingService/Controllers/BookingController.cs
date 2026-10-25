@@ -16,11 +16,13 @@ public class BookingController : ControllerBase
 {
     private readonly Services.BookingService _bookingService;
     private readonly BookingMapper _mapper;
+    private readonly BookingStatusHistoryMapper _bookingStatusHistoryMapper;
 
-    public BookingController(Services.BookingService bookingService, BookingMapper mapper)
+    public BookingController(Services.BookingService bookingService, BookingMapper mapper, BookingStatusHistoryMapper bookingStatusHistoryMapper)
     {
         _bookingService = bookingService;
         _mapper = mapper;
+        _bookingStatusHistoryMapper = bookingStatusHistoryMapper;
     }
 
     /// <summary>Создать новое бронирование</summary>
@@ -75,9 +77,10 @@ public class BookingController : ControllerBase
         => await _bookingService.GetStatistics();
 
     [HttpGet("{bookingId:long}/history")]
-    public async Task<List<BookingStatusHistory>> GetBookingHistory(long bookingId)
+    [ProducesResponseType<List<BookingStatusHistoryResponse>>(StatusCodes.Status200OK)]
+    public async Task<List<BookingStatusHistoryResponse>> GetBookingHistory(long bookingId)
     {
-        return await _bookingService.GetBookingHistory(bookingId);
+        return _bookingStatusHistoryMapper.ToResponseList(await _bookingService.GetBookingHistory(bookingId));
     }
 
 }

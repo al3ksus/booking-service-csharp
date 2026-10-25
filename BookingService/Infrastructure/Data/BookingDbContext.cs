@@ -86,6 +86,11 @@ public class BookingDbContext : DbContext
                 .HasColumnName("booking_id")
                 .IsRequired();
 
+            entity.HasOne(h => h.Booking)
+                .WithMany()
+                .HasForeignKey(h => h.BookingId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             entity.Property(e => e.ChangedAt)
                 .HasColumnName("changed_at")
                 .IsRequired();
@@ -114,7 +119,7 @@ public class BookingDbContext : DbContext
                 continue;
             
             BookingStatusHistories.Add(BookingStatusHistory.Create(
-                booking.Id,
+                booking,
                 bookingEntry.State == EntityState.Modified ? statusProperty.OriginalValue : null,
                 statusProperty.CurrentValue));
         }
