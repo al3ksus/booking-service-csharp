@@ -74,4 +74,10 @@ public class BookingController : ControllerBase
     public async Task<StatisticsResponse> GetStatistics()
         => await _bookingService.GetStatistics();
 
+    [HttpGet("{bookingId:long}/history")]
+    public async Task<List<BookingStatusHistory>> GetBookingHistory(long bookingId)
+    {
+        return await _bookingService.GetBookingHistory(bookingId);
+    }
+
 }

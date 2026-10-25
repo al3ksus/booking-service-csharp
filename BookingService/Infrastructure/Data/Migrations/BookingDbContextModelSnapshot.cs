@@ -86,6 +86,35 @@ namespace BookingService.Infrastructure.Data.Migrations
 
                     b.ToTable("bookings", (string)null);
                 });
+
+            modelBuilder.Entity("BookingService.Entities.BookingStatusHistory", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("BookingId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("booking_id");
+
+                    b.Property<DateTimeOffset>("ChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("changed_at");
+
+                    b.Property<int?>("StatusFrom")
+                        .HasColumnType("integer")
+                        .HasColumnName("status_from");
+
+                    b.Property<int>("StatusTo")
+                        .HasColumnType("integer")
+                        .HasColumnName("status_to");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("booking_status_history", (string)null);
+                });
 #pragma warning restore 612, 618
         }
     }
