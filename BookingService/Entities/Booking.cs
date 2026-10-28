@@ -16,8 +16,6 @@ public class Booking
     public DateTimeOffset CreatedAt { get; private set; }
     public Guid? CatalogRequestId { get; private set; }
     public DateTimeOffset? CancellationRequestedAt { get; private set; }
-
-    // TODO: Task 03 — версия для оптимистичной блокировки (EF Core xmin)
     public uint Version { get; private set; }
 
     // Parameterless constructor required by EF Core

@@ -2,6 +2,7 @@ using BookingService.Configuration;
 using BookingService.Exceptions;
 using BookingService.Infrastructure.BackgroundJobs;
 using BookingService.Infrastructure.Data;
+using BookingService.Infrastructure.Data.Transactions;
 using BookingService.Infrastructure.Messaging;
 using BookingService.Infrastructure.Messaging.Contracts;
 using BookingService.Mappers;
@@ -39,6 +40,8 @@ builder.Services.AddDbContext<BookingDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddScoped<BookingRepository>();
+builder.Services.AddScoped<ProcessedEventRepository>();
+builder.Services.AddScoped<BookingTransactionManager>();
 
 // ---- Business Services ----
 builder.Services.AddScoped<BookingService.Services.BookingService>();

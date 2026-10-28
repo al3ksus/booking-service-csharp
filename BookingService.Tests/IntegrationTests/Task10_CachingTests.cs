@@ -1,6 +1,7 @@
 using BookingService.Configuration;
 using BookingService.Entities;
 using BookingService.Infrastructure.Data;
+using BookingService.Infrastructure.Data.Transactions;
 using BookingService.Infrastructure.Messaging;
 using BookingService.Tests.Fixtures;
 using FluentAssertions;
@@ -41,6 +42,8 @@ public class Task10_CachingTests : IntegrationTestBase
             new BookingEventPublisher(BusMock, NullLogger<BookingEventPublisher>.Instance),
             new CurrentDateTimeProvider(),
             NullLogger<Services.BookingService>.Instance,
+            new ProcessedEventRepository(Context),
+            new BookingTransactionManager(Context),
             cache: cache);
 
     // -----------------------------------------------------------------------

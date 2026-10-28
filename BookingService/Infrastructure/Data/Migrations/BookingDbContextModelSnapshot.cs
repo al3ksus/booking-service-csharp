@@ -118,6 +118,22 @@ namespace BookingService.Infrastructure.Data.Migrations
                     b.ToTable("booking_status_history", (string)null);
                 });
 
+            modelBuilder.Entity("BookingService.Entities.ProcessedEvent", b =>
+                {
+                    b.Property<Guid>("EventId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("event_id");
+
+                    b.Property<DateTime>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at");
+
+                    b.HasKey("EventId");
+
+                    b.ToTable("processed_events", (string)null);
+                });
+
             modelBuilder.Entity("BookingService.Entities.BookingStatusHistory", b =>
                 {
                     b.HasOne("BookingService.Entities.Booking", "Booking")

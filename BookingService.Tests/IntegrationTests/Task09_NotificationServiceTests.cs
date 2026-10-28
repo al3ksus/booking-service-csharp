@@ -1,6 +1,7 @@
 using BookingService.Configuration;
 using BookingService.Entities;
 using BookingService.Infrastructure.Data;
+using BookingService.Infrastructure.Data.Transactions;
 using BookingService.Infrastructure.Messaging;
 using BookingService.Services;
 using BookingService.Tests.Fixtures;
@@ -39,6 +40,8 @@ public class Task09_NotificationServiceTests : IntegrationTestBase
             new BookingEventPublisher(BusMock, NullLogger<BookingEventPublisher>.Instance),
             new CurrentDateTimeProvider(),
             NullLogger<Services.BookingService>.Instance,
+            new ProcessedEventRepository(Context),
+            new BookingTransactionManager(Context),
             notificationService: notificationService);
 
     // -----------------------------------------------------------------------
