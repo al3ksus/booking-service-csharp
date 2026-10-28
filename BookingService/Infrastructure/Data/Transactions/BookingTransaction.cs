@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace BookingService.Infrastructure.Data.Transactions;
 
-public class BookingTransaction
+public class BookingTransaction : IAsyncDisposable
 {
     private readonly IDbContextTransaction _transaction;
 
@@ -20,5 +20,10 @@ public class BookingTransaction
     public async Task RollbackAsync()
     {
         await _transaction.RollbackAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _transaction.DisposeAsync();
     }
 }

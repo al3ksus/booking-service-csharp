@@ -136,29 +136,29 @@ public class BookingService
     /// Обработать событие подтверждения booking job от Catalog Service.
     /// Переводит бронирование в статус Confirmed.
     /// </summary>
-    public async Task HandleBookingJobConfirmed(Guid requestId)
+    public async Task HandleBookingJobConfirmed(Guid requestId, Guid eventId)
     {
         _logger.LogInformation("Получено событие BookingJobConfirmed: requestId={RequestId}", requestId);
 
-        var processedEvent = await _processedEventRepository.FindByEventIdAsync(requestId);
+        var processedEvent = await _processedEventRepository.FindByEventIdAsync(eventId);
         if (processedEvent is not null)
         {
-            _logger.LogWarning("Сообщение с EventId {requestId} уже обработано.", requestId);
+            _logger.LogWarning("Сообщение с EventId {eventId} уже обработано.", eventId);
             return;
         }
 
-        var transaction = await _transactionManager.BeginTransactionAsync();
+        await using var transaction = await _transactionManager.BeginTransactionAsync();
 
         try
         {
             try
             {
                 await _processedEventRepository.SaveAsync(
-                    new ProcessedEvent(requestId, DateTimeOffset.UtcNow.UtcDateTime));
+                    new ProcessedEvent(eventId, DateTimeOffset.UtcNow.UtcDateTime));
             }
             catch (DbUpdateException)
             {
-                _logger.LogWarning("Сообщение с EventId {requestId} уже обработано.", requestId);
+                _logger.LogWarning("Сообщение с EventId {eventId} уже обработано.", eventId);
                 await transaction.RollbackAsync();
                 return;
             }
@@ -166,6 +166,7 @@ public class BookingService
             var booking = await _repository.FindByCatalogRequestIdAsync(requestId);
             if (booking is null)
             {
+                await transaction.RollbackAsync();
                 _logger.LogWarning("Бронирование не найдено по requestId: {RequestId}. Событие проигнорировано.", requestId);
                 return;
             }
@@ -203,29 +204,29 @@ public class BookingService
     /// Обработать событие отклонения booking job от Catalog Service.
     /// Отменяет бронирование.
     /// </summary>
-    public async Task HandleBookingJobDenied(Guid requestId)
+    public async Task HandleBookingJobDenied(Guid requestId, Guid eventId)
     {
         _logger.LogInformation("Получено событие BookingJobDenied: requestId={RequestId}", requestId);
         
-        var processedEvent = await _processedEventRepository.FindByEventIdAsync(requestId);
+        var processedEvent = await _processedEventRepository.FindByEventIdAsync(eventId);
         if (processedEvent is not null)
         {
-            _logger.LogWarning("Сообщение с EventId {requestId} уже обработано.", requestId);
+            _logger.LogWarning("Сообщение с EventId {eventId} уже обработано.", eventId);
             return;
         }
 
-        var transaction = await _transactionManager.BeginTransactionAsync();
+        await using var transaction = await _transactionManager.BeginTransactionAsync();
 
         try
         {
             try
             {
                 await _processedEventRepository.SaveAsync(
-                    new ProcessedEvent(requestId, DateTimeOffset.UtcNow.UtcDateTime));
+                    new ProcessedEvent(eventId, DateTimeOffset.UtcNow.UtcDateTime));
             }
             catch (DbUpdateException)
             {
-                _logger.LogWarning("Сообщение с EventId {requestId} уже обработано.", requestId);
+                _logger.LogWarning("Сообщение с EventId {eventId} уже обработано.", eventId);
                 await transaction.RollbackAsync();
                 return;
             }
@@ -233,6 +234,7 @@ public class BookingService
             var booking = await _repository.FindByCatalogRequestIdAsync(requestId);
             if (booking is null)
             {
+                await transaction.RollbackAsync();
                 _logger.LogWarning("Бронирование не найдено по requestId: {RequestId}. Событие проигнорировано.", requestId);
                 return;
             }
@@ -259,33 +261,37 @@ public class BookingService
     /// <summary>
     /// Откатить отмену бронирования.
     /// </summary>
-    public async Task HandleCancellationError(Guid requestId)
+    public async Task HandleCancellationError(Guid requestId, Guid eventId)
     {
-        var processedEvent = await _processedEventRepository.FindByEventIdAsync(requestId);
+        var processedEvent = await _processedEventRepository.FindByEventIdAsync(eventId);
         if (processedEvent is not null)
         {
-            _logger.LogWarning("Сообщение с EventId {requestId} уже обработано.", requestId);
+            _logger.LogWarning("Сообщение с EventId {eventId} уже обработано.", eventId);
             return;
         }
 
-        var transaction = await _transactionManager.BeginTransactionAsync();
+        await using var transaction = await _transactionManager.BeginTransactionAsync();
 
         try
         {
             try
             {
                 await _processedEventRepository.SaveAsync(
-                    new ProcessedEvent(requestId, DateTimeOffset.UtcNow.UtcDateTime));
+                    new ProcessedEvent(eventId, DateTimeOffset.UtcNow.UtcDateTime));
             }
             catch (DbUpdateException)
             {
-                _logger.LogWarning("Сообщение с EventId {requestId} уже обработано.", requestId);
+                _logger.LogWarning("Сообщение с EventId {eventId} уже обработано.", eventId);
                 await transaction.RollbackAsync();
                 return;
             }
             
-            var booking = await _repository.FindByCatalogRequestIdAsync(requestId)
-                          ?? throw new BusinessException($"Бронирование с указанным requestId: '{requestId}' не найдено.");
+            var booking = await _repository.FindByCatalogRequestIdAsync(requestId);
+            if (booking is null)
+            {
+                await transaction.RollbackAsync();
+                throw new BusinessException($"Бронирование с указанным requestId: '{requestId}' не найдено.");
+            }
         
             booking.RollbackCancellation();
 

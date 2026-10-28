@@ -20,6 +20,6 @@ public class CancelBookingErrorsHandler : IHandleMessages<CancelBookingJobByRequ
     
     public async Task Handle(CancelBookingJobByRequestIdRequest message)
     {
-        await _bookingService.HandleCancellationError(message.RequestId);
+        await _bookingService.HandleCancellationError(message.RequestId, message.EventId);
     }
 }
