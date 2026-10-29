@@ -139,65 +139,39 @@ public class BookingService
     public async Task HandleBookingJobConfirmed(Guid requestId, Guid eventId)
     {
         _logger.LogInformation("Получено событие BookingJobConfirmed: requestId={RequestId}", requestId);
-
-        var processedEvent = await _processedEventRepository.FindByEventIdAsync(eventId);
-        if (processedEvent is not null)
+        
+        var result = await ProcessEventAsync(eventId, async () =>
         {
-            _logger.LogWarning("Сообщение с EventId {eventId} уже обработано.", eventId);
-            return;
-        }
-
-        await using var transaction = await _transactionManager.BeginTransactionAsync();
-
-        try
-        {
-            try
-            {
-                await _processedEventRepository.SaveAsync(
-                    new ProcessedEvent(eventId, DateTimeOffset.UtcNow.UtcDateTime));
-            }
-            catch (DbUpdateException)
-            {
-                _logger.LogWarning("Сообщение с EventId {eventId} уже обработано.", eventId);
-                await transaction.RollbackAsync();
-                return;
-            }
-            
             var booking = await _repository.FindByCatalogRequestIdAsync(requestId);
             if (booking is null)
             {
-                await transaction.RollbackAsync();
                 _logger.LogWarning("Бронирование не найдено по requestId: {RequestId}. Событие проигнорировано.", requestId);
-                return;
+                return null;
             }
 
             _logger.LogInformation("Найдено бронирование: id={Id}, статус={Status}. Подтверждаем...",
                 booking.Id, booking.Status);
 
-            ConfirmBookingAsync(booking);
+            ConfirmBooking(booking);
 
             try
             {
                 await _repository.SaveAsync(booking);
             }
-            catch (DbUpdateConcurrencyException e)
+            catch (DbUpdateConcurrencyException)
             {
                 await _repository.ReloadAsync(booking);
 
-                ConfirmBookingAsync(booking);
+                ConfirmBooking(booking);
                 await _repository.SaveAsync(booking);
             }
 
-            await transaction.CommitAsync();
-            
+            return booking;
+        });
+        
+        if (result.IsSuccess && result.Booking is not null)
             _logger.LogInformation("Бронирование успешно подтверждено: id={Id}, новый статус={Status}",
-                booking.Id, booking.Status);
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            throw;
-        }
+                result.Booking.Id, result.Booking.Status);
     }
 
     /// <summary>
@@ -208,35 +182,13 @@ public class BookingService
     {
         _logger.LogInformation("Получено событие BookingJobDenied: requestId={RequestId}", requestId);
         
-        var processedEvent = await _processedEventRepository.FindByEventIdAsync(eventId);
-        if (processedEvent is not null)
+        var result = await ProcessEventAsync(eventId, async () =>
         {
-            _logger.LogWarning("Сообщение с EventId {eventId} уже обработано.", eventId);
-            return;
-        }
-
-        await using var transaction = await _transactionManager.BeginTransactionAsync();
-
-        try
-        {
-            try
-            {
-                await _processedEventRepository.SaveAsync(
-                    new ProcessedEvent(eventId, DateTimeOffset.UtcNow.UtcDateTime));
-            }
-            catch (DbUpdateException)
-            {
-                _logger.LogWarning("Сообщение с EventId {eventId} уже обработано.", eventId);
-                await transaction.RollbackAsync();
-                return;
-            }
-            
             var booking = await _repository.FindByCatalogRequestIdAsync(requestId);
             if (booking is null)
             {
-                await transaction.RollbackAsync();
                 _logger.LogWarning("Бронирование не найдено по requestId: {RequestId}. Событие проигнорировано.", requestId);
-                return;
+                return null;
             }
 
             _logger.LogInformation("Найдено бронирование: id={Id}, статус={Status}. Отменяем...",
@@ -246,16 +198,12 @@ public class BookingService
             booking.Cancel(currentDate);
             await _repository.SaveAsync(booking);
 
+            return booking;
+        });
+        
+        if (result.IsSuccess && result.Booking is not null)
             _logger.LogInformation("Бронирование успешно отменено: id={Id}, новый статус={Status}",
-                booking.Id, booking.Status);
-
-            await transaction.CommitAsync();
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            throw;
-        }
+            result.Booking.Id, result.Booking.Status);
     }
 
     /// <summary>
@@ -263,13 +211,32 @@ public class BookingService
     /// </summary>
     public async Task HandleCancellationError(Guid requestId, Guid eventId)
     {
+        await ProcessEventAsync(eventId, async () =>
+        {
+            var booking = await _repository.FindByCatalogRequestIdAsync(requestId);
+            if (booking is null)
+            {
+                _logger.LogWarning("Бронирование не найдено по requestId: {RequestId}. Событие проигнорировано.", requestId);
+                return null;
+            }
+        
+            booking.RollbackCancellation();
+
+            await _repository.SaveAsync(booking);
+
+            return booking;
+        });
+    }
+
+    private async Task<ProcessEventResult> ProcessEventAsync(Guid eventId, Func<Task<Booking?>> handle)
+    {
         var processedEvent = await _processedEventRepository.FindByEventIdAsync(eventId);
         if (processedEvent is not null)
         {
             _logger.LogWarning("Сообщение с EventId {eventId} уже обработано.", eventId);
-            return;
+            return ProcessEventResult.Failed();
         }
-
+        
         await using var transaction = await _transactionManager.BeginTransactionAsync();
 
         try
@@ -283,21 +250,20 @@ public class BookingService
             {
                 _logger.LogWarning("Сообщение с EventId {eventId} уже обработано.", eventId);
                 await transaction.RollbackAsync();
-                return;
+                return ProcessEventResult.Failed();
             }
-            
-            var booking = await _repository.FindByCatalogRequestIdAsync(requestId);
-            if (booking is null)
+
+            var booking = await handle();
+
+            if (booking == null)
             {
                 await transaction.RollbackAsync();
-                throw new BusinessException($"Бронирование с указанным requestId: '{requestId}' не найдено.");
+                return ProcessEventResult.Failed();
             }
-        
-            booking.RollbackCancellation();
-
-            await _repository.SaveAsync(booking);
-
+            
             await transaction.CommitAsync();
+
+            return ProcessEventResult.Success(booking);
         }
         catch
         {
@@ -319,7 +285,7 @@ public class BookingService
         return await _repository.GetBookingHistoryAsync(bookingId);
     }
 
-    private void ConfirmBookingAsync(Booking booking)
+    private void ConfirmBooking(Booking booking)
     {
         if (booking.Status == BookingStatus.CancellationPending)
         {
@@ -328,5 +294,17 @@ public class BookingService
         }
 
         booking.Confirm();
+    }
+
+    private record ProcessEventResult
+    {
+        public bool IsSuccess { get; set; }
+        public Booking? Booking { get; set; }
+
+        public static ProcessEventResult Success(Booking booking)
+            => new ProcessEventResult { IsSuccess = true, Booking = booking };
+        
+        public static ProcessEventResult Failed()
+            => new ProcessEventResult { IsSuccess = false, Booking = null };
     }
 }
