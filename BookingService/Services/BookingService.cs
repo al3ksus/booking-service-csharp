@@ -172,19 +172,20 @@ public class BookingService
             catch (DbUpdateConcurrencyException)
             {
                 await _repository.ReloadAsync(booking);
-
+                oldStatus = booking.Status;
                 ConfirmBooking(booking);
                 await _repository.SaveAsync(booking);
             }
 
-            await _publisher.PublishStatusChanged(
-                new BookingStatusChangedEvent
-                {
-                    BookingId = booking.Id,
-                    ChangedAt = _dateTimeProvider.UtcNow(),
-                    NewStatus = booking.Status,
-                    OldStatus = oldStatus
-                });
+            if (oldStatus != booking.Status)
+                await _publisher.PublishStatusChanged(
+                    new BookingStatusChangedEvent
+                    {
+                        BookingId = booking.Id,
+                        ChangedAt = _dateTimeProvider.UtcNow(),
+                        NewStatus = booking.Status,
+                        OldStatus = oldStatus
+                    });
 
             return booking;
         });
@@ -326,15 +327,17 @@ public class BookingService
         return await _repository.GetBookingHistoryAsync(bookingId);
     }
 
-    private void ConfirmBooking(Booking booking)
+    private bool ConfirmBooking(Booking booking)
     {
         if (booking.Status == BookingStatus.CancellationPending)
         {
             _logger.LogWarning("Ошибка при подтверждении бронирования. Бронирование находится в процессе отмены.");
-            return;
+            return false;
         }
 
         booking.Confirm();
+
+        return true;
     }
 
     private record ProcessEventResult
