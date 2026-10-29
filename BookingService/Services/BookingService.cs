@@ -3,6 +3,7 @@ using BookingService.Dto.Response;
 using BookingService.Entities;
 using BookingService.Exceptions;
 using BookingService.Infrastructure.Data;
+using BookingService.Infrastructure.Data.Transactions;
 using BookingService.Infrastructure.Messaging;
 using BookingService.Infrastructure.Messaging.Contracts;
 using BookingService.Infrastructure.Notifications;
@@ -18,6 +19,8 @@ namespace BookingService.Services;
 public class BookingService
 {
     private readonly BookingRepository _repository;
+    private readonly ProcessedEventRepository _processedEventRepository;
+    private readonly BookingTransactionManager _transactionManager;
     private readonly BookingEventPublisher _publisher;
     private readonly ICurrentDateTimeProvider _dateTimeProvider;
     private readonly ILogger<BookingService> _logger;
@@ -32,14 +35,15 @@ public class BookingService
         BookingRepository repository,
         BookingEventPublisher publisher,
         ICurrentDateTimeProvider dateTimeProvider,
-        ILogger<BookingService> logger,
-        INotificationService? notificationService = null,
+        ILogger<BookingService> logger, ProcessedEventRepository processedEventRepository, BookingTransactionManager transactionManager, INotificationService? notificationService = null,
         IMemoryCache? cache = null)
     {
         _repository = repository;
         _publisher = publisher;
         _dateTimeProvider = dateTimeProvider;
         _logger = logger;
+        _processedEventRepository = processedEventRepository;
+        _transactionManager = transactionManager;
         _notificationService = notificationService;
         _cache = cache;
     }
@@ -87,9 +91,19 @@ public class BookingService
             ?? throw new BusinessException($"Бронирование с указанным id: '{id}' не найдено.");
 
         var currentDate = DateOnly.FromDateTime(_dateTimeProvider.UtcNow().UtcDateTime);
+        var oldStatus = booking.Status;
         booking.Cancel(currentDate);
 
         await _repository.SaveAsync(booking);
+
+        await _publisher.PublishStatusChanged(
+            new BookingStatusChangedEvent
+            {
+                BookingId = booking.Id,
+                ChangedAt = _dateTimeProvider.UtcNow(),
+                NewStatus = booking.Status,
+                OldStatus = oldStatus
+            });
 
         if (booking.CatalogRequestId is not null)
         {
@@ -132,62 +146,209 @@ public class BookingService
     /// Обработать событие подтверждения booking job от Catalog Service.
     /// Переводит бронирование в статус Confirmed.
     /// </summary>
-    public async Task HandleBookingJobConfirmed(Guid requestId)
+    public async Task HandleBookingJobConfirmed(Guid requestId, Guid eventId)
     {
         _logger.LogInformation("Получено событие BookingJobConfirmed: requestId={RequestId}", requestId);
-
-        var booking = await _repository.FindByCatalogRequestIdAsync(requestId);
-        if (booking is null)
+        
+        var result = await ProcessEventAsync(eventId, async () =>
         {
-            _logger.LogWarning("Бронирование не найдено по requestId: {RequestId}. Событие проигнорировано.", requestId);
-            return;
-        }
+            var booking = await _repository.FindByCatalogRequestIdAsync(requestId);
+            if (booking is null)
+            {
+                _logger.LogWarning("Бронирование не найдено по requestId: {RequestId}. Событие проигнорировано.", requestId);
+                return null;
+            }
 
-        _logger.LogInformation("Найдено бронирование: id={Id}, статус={Status}. Подтверждаем...",
-            booking.Id, booking.Status);
+            _logger.LogInformation("Найдено бронирование: id={Id}, статус={Status}. Подтверждаем...",
+                booking.Id, booking.Status);
 
-        booking.Confirm();
+            var oldStatus = booking.Status;
+            ConfirmBooking(booking);
 
-        _logger.LogInformation("Бронирование успешно подтверждено: id={Id}, новый статус={Status}",
-            booking.Id, booking.Status);
+            try
+            {
+                await _repository.SaveAsync(booking);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                await _repository.ReloadAsync(booking);
+                oldStatus = booking.Status;
+                ConfirmBooking(booking);
+                await _repository.SaveAsync(booking);
+            }
+
+            if (oldStatus != booking.Status)
+                await _publisher.PublishStatusChanged(
+                    new BookingStatusChangedEvent
+                    {
+                        BookingId = booking.Id,
+                        ChangedAt = _dateTimeProvider.UtcNow(),
+                        NewStatus = booking.Status,
+                        OldStatus = oldStatus
+                    });
+
+            return booking;
+        });
+        
+        if (result.IsSuccess && result.Booking is not null)
+            _logger.LogInformation("Бронирование успешно подтверждено: id={Id}, новый статус={Status}",
+                result.Booking.Id, result.Booking.Status);
     }
 
     /// <summary>
     /// Обработать событие отклонения booking job от Catalog Service.
     /// Отменяет бронирование.
     /// </summary>
-    public async Task HandleBookingJobDenied(Guid requestId)
+    public async Task HandleBookingJobDenied(Guid requestId, Guid eventId)
     {
         _logger.LogInformation("Получено событие BookingJobDenied: requestId={RequestId}", requestId);
-
-        var booking = await _repository.FindByCatalogRequestIdAsync(requestId);
-        if (booking is null)
+        
+        var result = await ProcessEventAsync(eventId, async () =>
         {
-            _logger.LogWarning("Бронирование не найдено по requestId: {RequestId}. Событие проигнорировано.", requestId);
-            return;
-        }
+            var booking = await _repository.FindByCatalogRequestIdAsync(requestId);
+            if (booking is null)
+            {
+                _logger.LogWarning("Бронирование не найдено по requestId: {RequestId}. Событие проигнорировано.", requestId);
+                return null;
+            }
 
-        _logger.LogInformation("Найдено бронирование: id={Id}, статус={Status}. Отменяем...",
-            booking.Id, booking.Status);
+            _logger.LogInformation("Найдено бронирование: id={Id}, статус={Status}. Отменяем...",
+                booking.Id, booking.Status);
 
-        var currentDate = DateOnly.FromDateTime(_dateTimeProvider.UtcNow().UtcDateTime);
-        booking.Cancel(currentDate);
-        await _repository.SaveAsync(booking);
+            var currentDate = DateOnly.FromDateTime(_dateTimeProvider.UtcNow().UtcDateTime);
+            var oldStatus = booking.Status;
+            booking.Cancel(currentDate);
+            
+            await _repository.SaveAsync(booking);
+            
+            await _publisher.PublishStatusChanged(
+                new BookingStatusChangedEvent
+                {
+                    BookingId = booking.Id,
+                    ChangedAt = _dateTimeProvider.UtcNow(),
+                    NewStatus = booking.Status,
+                    OldStatus = oldStatus
+                });
 
-        _logger.LogInformation("Бронирование успешно отменено: id={Id}, новый статус={Status}",
-            booking.Id, booking.Status);
+            return booking;
+        });
+        
+        if (result.IsSuccess && result.Booking is not null)
+            _logger.LogInformation("Бронирование успешно отменено: id={Id}, новый статус={Status}",
+            result.Booking.Id, result.Booking.Status);
     }
 
-    // TODO: Task 01 — откат отмены бронирования (компенсирующая транзакция)
-    public Task HandleCancellationError(Guid requestId) => throw new NotImplementedException();
+    /// <summary>
+    /// Откатить отмену бронирования.
+    /// </summary>
+    public async Task HandleCancellationError(Guid requestId, Guid eventId)
+    {
+        await ProcessEventAsync(eventId, async () =>
+        {
+            var booking = await _repository.FindByCatalogRequestIdAsync(requestId);
+            if (booking is null)
+            {
+                _logger.LogWarning("Бронирование не найдено по requestId: {RequestId}. Событие проигнорировано.", requestId);
+                return null;
+            }
+
+            var oldStatus = booking.Status;
+            booking.RollbackCancellation();
+
+            await _repository.SaveAsync(booking);
+            
+            await _publisher.PublishStatusChanged(
+                new BookingStatusChangedEvent
+                {
+                    BookingId = booking.Id,
+                    ChangedAt = _dateTimeProvider.UtcNow(),
+                    NewStatus = booking.Status,
+                    OldStatus = oldStatus
+                });
+
+            return booking;
+        });
+    }
+
+    private async Task<ProcessEventResult> ProcessEventAsync(Guid eventId, Func<Task<Booking?>> handle)
+    {
+        var processedEvent = await _processedEventRepository.FindByEventIdAsync(eventId);
+        if (processedEvent is not null)
+        {
+            _logger.LogWarning("Сообщение с EventId {eventId} уже обработано.", eventId);
+            return ProcessEventResult.Failed();
+        }
+        
+        await using var transaction = await _transactionManager.BeginTransactionAsync();
+
+        try
+        {
+            try
+            {
+                await _processedEventRepository.SaveAsync(
+                    new ProcessedEvent(eventId, DateTimeOffset.UtcNow.UtcDateTime));
+            }
+            catch (DbUpdateException)
+            {
+                _logger.LogWarning("Сообщение с EventId {eventId} уже обработано.", eventId);
+                await transaction.RollbackAsync();
+                return ProcessEventResult.Failed();
+            }
+
+            var booking = await handle();
+
+            if (booking == null)
+            {
+                await transaction.RollbackAsync();
+                return ProcessEventResult.Failed();
+            }
+            
+            await transaction.CommitAsync();
+
+            return ProcessEventResult.Success(booking);
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
 
     /// <summary>Устаревший метод-заглушка — используйте HandleCancellationError</summary>
-    public Task HandleError(Guid requestId) => HandleCancellationError(requestId);
+    // public Task HandleError(Guid requestId) => HandleCancellationError(requestId);
 
-    // TODO: Task 02 — реализовать агрегирующий запрос статистики бронирований
-    public Task<StatisticsResponse> GetStatistics() => throw new NotImplementedException();
+    public async Task<StatisticsResponse> GetStatistics()
+    {
+        return await _repository.GetStatisticsAsync();
+    }
 
-    // TODO: Task 04 — возвращать историю изменений статусов для указанного бронирования
-    public Task<List<Entities.BookingStatusHistory>> GetBookingHistory(long bookingId)
-        => throw new NotImplementedException();
+    public async Task<List<BookingStatusHistory>> GetBookingHistory(long bookingId)
+    {
+        return await _repository.GetBookingHistoryAsync(bookingId);
+    }
+
+    private bool ConfirmBooking(Booking booking)
+    {
+        if (booking.Status == BookingStatus.CancellationPending)
+        {
+            _logger.LogWarning("Ошибка при подтверждении бронирования. Бронирование находится в процессе отмены.");
+            return false;
+        }
+
+        booking.Confirm();
+
+        return true;
+    }
+
+    private record ProcessEventResult
+    {
+        public bool IsSuccess { get; set; }
+        public Booking? Booking { get; set; }
+
+        public static ProcessEventResult Success(Booking booking)
+            => new ProcessEventResult { IsSuccess = true, Booking = booking };
+        
+        public static ProcessEventResult Failed()
+            => new ProcessEventResult { IsSuccess = false, Booking = null };
+    }
 }

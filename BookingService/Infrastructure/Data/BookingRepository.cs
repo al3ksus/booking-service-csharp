@@ -66,11 +66,58 @@ public class BookingRepository
         await _context.SaveChangesAsync();
     }
 
-    // TODO: Task 02 — реализовать агрегирующий SQL-запрос статистики
-    public Task<StatisticsResponse> GetStatisticsAsync()
-        => throw new NotImplementedException();
+    public async Task<StatisticsResponse> GetStatisticsAsync()
+    {
+        var totalCount = await _context.Bookings.CountAsync();
+        
+        var byStatus = await _context.Bookings
+            .GroupBy(b => b.Status)
+            .Select(b => new StatusCount
+            {
+                Status = b.Key,
+                Count = b.Count()
+            })
+            .ToListAsync();
+        
+        var topResources = await _context.Bookings
+            .GroupBy(b => b.ResourceId)
+            .OrderByDescending(b => b.Count())
+            .Take(5)
+            .Select(b => new ResourceCount
+            {
+                ResourceId = b.Key,
+                BookingCount = b.Count()
+            })
+            .ToListAsync();
 
-    // TODO: Task 03 — найти бронирования, застрявшие в CancellationPending
+        return new StatisticsResponse
+        {
+            TotalCount = totalCount,
+            ByStatus = byStatus,
+            TopResources = topResources
+        };
+    }
+
     public Task<List<Booking>> FindStuckCancellationsAsync(DateTimeOffset cancellationRequestedBefore)
-        => throw new NotImplementedException();
+    {
+        var now = DateTimeOffset.UtcNow;
+        
+        return _context.Bookings
+            .Where(b => b.Status == BookingStatus.CancellationPending)
+            .Where(b => b.CancellationRequestedAt <= cancellationRequestedBefore)
+            .ToListAsync();
+    }
+
+    public async Task ReloadAsync(Booking booking)
+    {
+        await _context.Entry(booking).ReloadAsync();
+    }
+
+    public async Task<List<BookingStatusHistory>> GetBookingHistoryAsync(long bookingId)
+    {
+        return await _context.BookingStatusHistories
+            .Where(h => h.BookingId == bookingId)
+            .OrderBy(h => h.ChangedAt)
+            .ToListAsync();
+    }
 }
