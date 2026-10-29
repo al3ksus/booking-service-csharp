@@ -91,9 +91,19 @@ public class BookingService
             ?? throw new BusinessException($"Бронирование с указанным id: '{id}' не найдено.");
 
         var currentDate = DateOnly.FromDateTime(_dateTimeProvider.UtcNow().UtcDateTime);
+        var oldStatus = booking.Status;
         booking.Cancel(currentDate);
 
         await _repository.SaveAsync(booking);
+
+        await _publisher.PublishStatusChanged(
+            new BookingStatusChangedEvent
+            {
+                BookingId = booking.Id,
+                ChangedAt = _dateTimeProvider.UtcNow(),
+                NewStatus = booking.Status,
+                OldStatus = oldStatus
+            });
 
         if (booking.CatalogRequestId is not null)
         {
@@ -152,6 +162,7 @@ public class BookingService
             _logger.LogInformation("Найдено бронирование: id={Id}, статус={Status}. Подтверждаем...",
                 booking.Id, booking.Status);
 
+            var oldStatus = booking.Status;
             ConfirmBooking(booking);
 
             try
@@ -165,6 +176,15 @@ public class BookingService
                 ConfirmBooking(booking);
                 await _repository.SaveAsync(booking);
             }
+
+            await _publisher.PublishStatusChanged(
+                new BookingStatusChangedEvent
+                {
+                    BookingId = booking.Id,
+                    ChangedAt = _dateTimeProvider.UtcNow(),
+                    NewStatus = booking.Status,
+                    OldStatus = oldStatus
+                });
 
             return booking;
         });
@@ -195,8 +215,19 @@ public class BookingService
                 booking.Id, booking.Status);
 
             var currentDate = DateOnly.FromDateTime(_dateTimeProvider.UtcNow().UtcDateTime);
+            var oldStatus = booking.Status;
             booking.Cancel(currentDate);
+            
             await _repository.SaveAsync(booking);
+            
+            await _publisher.PublishStatusChanged(
+                new BookingStatusChangedEvent
+                {
+                    BookingId = booking.Id,
+                    ChangedAt = _dateTimeProvider.UtcNow(),
+                    NewStatus = booking.Status,
+                    OldStatus = oldStatus
+                });
 
             return booking;
         });
@@ -219,10 +250,20 @@ public class BookingService
                 _logger.LogWarning("Бронирование не найдено по requestId: {RequestId}. Событие проигнорировано.", requestId);
                 return null;
             }
-        
+
+            var oldStatus = booking.Status;
             booking.RollbackCancellation();
 
             await _repository.SaveAsync(booking);
+            
+            await _publisher.PublishStatusChanged(
+                new BookingStatusChangedEvent
+                {
+                    BookingId = booking.Id,
+                    ChangedAt = _dateTimeProvider.UtcNow(),
+                    NewStatus = booking.Status,
+                    OldStatus = oldStatus
+                });
 
             return booking;
         });
