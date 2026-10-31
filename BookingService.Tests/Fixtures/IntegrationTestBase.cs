@@ -50,7 +50,6 @@ public abstract class IntegrationTestBase : IAsyncLifetime
 
         // IBus мокируем — не нужен реальный RabbitMQ
         BusMock = Substitute.For<IBus>();
-        var configuration = Substitute.For<IConfiguration>();
 
         var publisher = new BookingEventPublisher(
             BusMock,
@@ -63,8 +62,7 @@ public abstract class IntegrationTestBase : IAsyncLifetime
             NullLogger<Services.BookingService>.Instance,
             new ProcessedEventRepository(Context),
             new BookingTransactionManager(Context),
-            new OutboxMessageRepository(Context),
-            configuration);
+            new OutboxMessageRepository(Context));
     }
 
     public async Task DisposeAsync()
