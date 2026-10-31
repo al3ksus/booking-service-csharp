@@ -345,7 +345,7 @@ public class BookingService
             await transaction.CommitAsync();
             
             if (_notificationService is not null && oldStatus.HasValue)
-                await _notificationService.NotifyStatusChangedAsync(booking.Id, oldStatus.Value, booking.Status);
+                await _notificationService.NotifySafeAsync(booking.Id, oldStatus.Value, booking.Status, _logger);
 
             return ProcessEventResult.Success(booking);
         }
