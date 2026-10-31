@@ -42,6 +42,7 @@ public class Task09_NotificationServiceTests : IntegrationTestBase
             NullLogger<Services.BookingService>.Instance,
             new ProcessedEventRepository(Context),
             new BookingTransactionManager(Context),
+            new OutboxMessageRepository(Context),
             notificationService: notificationService);
 
     // -----------------------------------------------------------------------

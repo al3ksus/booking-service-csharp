@@ -44,6 +44,7 @@ public class Task10_CachingTests : IntegrationTestBase
             NullLogger<Services.BookingService>.Instance,
             new ProcessedEventRepository(Context),
             new BookingTransactionManager(Context),
+            new OutboxMessageRepository(Context),
             cache: cache);
 
     // -----------------------------------------------------------------------
