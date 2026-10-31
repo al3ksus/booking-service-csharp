@@ -76,6 +76,20 @@ public class BookingDbContext : DbContext
             entity.HasIndex(b => b.CancellationRequestedAt)
                 .HasDatabaseName("idx_bookings_cancellation_pending")
                 .HasFilter("status = 4");
+            
+            entity.HasIndex(b => b.CancellationRequestedAt)
+                .HasDatabaseName("idx_bookings_catalog_request_id")
+                .IsUnique();
+
+            entity.HasIndex(b => new { b.UserId, b.Status })
+                .HasDatabaseName("idx_bookings_user_id_status");
+            
+            entity.HasIndex(b => new { b.ResourceId, b.BookedFrom, b.BookedTo })
+                .HasDatabaseName("idx_bookings_resource_id_dates");
+            
+            entity.HasIndex(b => b.CreatedAt)
+                .HasDatabaseName("idx_bookings_created_at")
+                .IsDescending();
         });
 
         modelBuilder.Entity<BookingStatusHistory>(entity =>
