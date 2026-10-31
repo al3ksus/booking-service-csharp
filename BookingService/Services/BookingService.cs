@@ -37,7 +37,7 @@ public class BookingService
         BookingRepository repository,
         BookingEventPublisher publisher,
         ICurrentDateTimeProvider dateTimeProvider,
-        ILogger<BookingService> logger, ProcessedEventRepository processedEventRepository, BookingTransactionManager transactionManager, OutboxMessageRepository outboxMessageRepository, INotificationService? notificationService = null,
+        ILogger<BookingService> logger, ProcessedEventRepository processedEventRepository, BookingTransactionManager transactionManager, OutboxMessageRepository outboxMessageRepository, IConfiguration? configuration, INotificationService? notificationService = null,
         IMemoryCache? cache = null)
     {
         _repository = repository;
@@ -47,6 +47,7 @@ public class BookingService
         _processedEventRepository = processedEventRepository;
         _transactionManager = transactionManager;
         _outboxMessageRepository = outboxMessageRepository;
+        _configuration = configuration;
         _notificationService = notificationService;
         _cache = cache;
     }
