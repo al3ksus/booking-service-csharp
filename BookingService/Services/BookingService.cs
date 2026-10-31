@@ -1,3 +1,4 @@
+using System.Text.Json;
 using BookingService.Configuration;
 using BookingService.Dto.Response;
 using BookingService.Entities;
@@ -20,6 +21,7 @@ public class BookingService
 {
     private readonly BookingRepository _repository;
     private readonly ProcessedEventRepository _processedEventRepository;
+    private readonly OutboxMessageRepository _outboxMessageRepository;
     private readonly BookingTransactionManager _transactionManager;
     private readonly BookingEventPublisher _publisher;
     private readonly ICurrentDateTimeProvider _dateTimeProvider;
@@ -35,7 +37,7 @@ public class BookingService
         BookingRepository repository,
         BookingEventPublisher publisher,
         ICurrentDateTimeProvider dateTimeProvider,
-        ILogger<BookingService> logger, ProcessedEventRepository processedEventRepository, BookingTransactionManager transactionManager, INotificationService? notificationService = null,
+        ILogger<BookingService> logger, ProcessedEventRepository processedEventRepository, BookingTransactionManager transactionManager, OutboxMessageRepository outboxMessageRepository, INotificationService? notificationService = null,
         IMemoryCache? cache = null)
     {
         _repository = repository;
@@ -44,6 +46,7 @@ public class BookingService
         _logger = logger;
         _processedEventRepository = processedEventRepository;
         _transactionManager = transactionManager;
+        _outboxMessageRepository = outboxMessageRepository;
         _notificationService = notificationService;
         _cache = cache;
     }
@@ -61,6 +64,9 @@ public class BookingService
         var booking = Booking.Create(userId, resourceId, bookedFrom, bookedTo, now);
 
         var requestId = Guid.NewGuid();
+
+        await using var transaction = await _transactionManager.BeginTransactionAsync();
+        
         booking.SetCatalogRequestId(requestId);
 
         await _repository.SaveAsync(booking);
@@ -74,7 +80,13 @@ public class BookingService
             EndDate = booking.BookedTo
         };
 
-        await _publisher.PublishCreateBookingJob(command);
+        var message = new OutboxMessage(
+            typeof(CreateBookingJobRequest).FullName!,
+            JsonSerializer.Serialize(command),
+            _dateTimeProvider.UtcNow());
+
+        await _outboxMessageRepository.SaveAsync(message);
+        await transaction.CommitAsync();
 
         _logger.LogInformation("Создано бронирование с ID: {Id}, requestId: {RequestId}", booking.Id, requestId);
 
@@ -87,6 +99,8 @@ public class BookingService
     /// </summary>
     public async Task CancelBooking(long id)
     {
+        var transaction = await _transactionManager.BeginTransactionAsync();
+        
         var booking = await _repository.FindByIdAsync(id)
             ?? throw new BusinessException($"Бронирование с указанным id: '{id}' не найдено.");
 
@@ -96,14 +110,18 @@ public class BookingService
 
         await _repository.SaveAsync(booking);
 
-        await _publisher.PublishStatusChanged(
-            new BookingStatusChangedEvent
-            {
-                BookingId = booking.Id,
-                ChangedAt = _dateTimeProvider.UtcNow(),
-                NewStatus = booking.Status,
-                OldStatus = oldStatus
-            });
+        var statusChangedEvent = new BookingStatusChangedEvent
+        {
+            BookingId = booking.Id,
+            ChangedAt = _dateTimeProvider.UtcNow(),
+            NewStatus = booking.Status,
+            OldStatus = oldStatus
+        };
+
+        await _outboxMessageRepository.SaveAsync(new OutboxMessage(
+            typeof(BookingStatusChangedEvent).FullName!,
+            JsonSerializer.Serialize(statusChangedEvent),
+            _dateTimeProvider.UtcNow()));   
 
         if (booking.CatalogRequestId is not null)
         {
@@ -113,8 +131,13 @@ public class BookingService
                 RequestId = booking.CatalogRequestId.Value
             };
 
-            await _publisher.PublishCancelBookingJob(command);
+            await _outboxMessageRepository.SaveAsync(new OutboxMessage(
+                typeof(CancelBookingJobByRequestIdRequest).FullName!,
+                JsonSerializer.Serialize(command),
+                _dateTimeProvider.UtcNow())); 
         }
+
+        await transaction.CommitAsync();
 
         _logger.LogInformation("Инициирована отмена бронирования с ID: {Id}, новый статус: {Status}",
             id, booking.Status);
@@ -177,15 +200,21 @@ public class BookingService
                 await _repository.SaveAsync(booking);
             }
 
-            if (oldStatus != booking.Status)
-                await _publisher.PublishStatusChanged(
-                    new BookingStatusChangedEvent
-                    {
-                        BookingId = booking.Id,
-                        ChangedAt = _dateTimeProvider.UtcNow(),
-                        NewStatus = booking.Status,
-                        OldStatus = oldStatus
-                    });
+            if (oldStatus == booking.Status)
+                return booking;
+            
+            var statusChangedEvent = new BookingStatusChangedEvent
+            {
+                BookingId = booking.Id,
+                ChangedAt = _dateTimeProvider.UtcNow(),
+                NewStatus = booking.Status,
+                OldStatus = oldStatus
+            };
+
+            await _outboxMessageRepository.SaveAsync(new OutboxMessage(
+                typeof(BookingStatusChangedEvent).FullName!,
+                JsonSerializer.Serialize(statusChangedEvent),
+                _dateTimeProvider.UtcNow()));
 
             return booking;
         });
@@ -221,14 +250,18 @@ public class BookingService
             
             await _repository.SaveAsync(booking);
             
-            await _publisher.PublishStatusChanged(
-                new BookingStatusChangedEvent
-                {
-                    BookingId = booking.Id,
-                    ChangedAt = _dateTimeProvider.UtcNow(),
-                    NewStatus = booking.Status,
-                    OldStatus = oldStatus
-                });
+            var statusChangedEvent = new BookingStatusChangedEvent
+            {
+                BookingId = booking.Id,
+                ChangedAt = _dateTimeProvider.UtcNow(),
+                NewStatus = booking.Status,
+                OldStatus = oldStatus
+            };
+
+            await _outboxMessageRepository.SaveAsync(new OutboxMessage(
+                typeof(BookingStatusChangedEvent).FullName!,
+                JsonSerializer.Serialize(statusChangedEvent),
+                _dateTimeProvider.UtcNow()));
 
             return booking;
         });
@@ -256,15 +289,19 @@ public class BookingService
             booking.RollbackCancellation();
 
             await _repository.SaveAsync(booking);
-            
-            await _publisher.PublishStatusChanged(
-                new BookingStatusChangedEvent
-                {
-                    BookingId = booking.Id,
-                    ChangedAt = _dateTimeProvider.UtcNow(),
-                    NewStatus = booking.Status,
-                    OldStatus = oldStatus
-                });
+
+            var statusChangedEvent = new BookingStatusChangedEvent
+            {
+                BookingId = booking.Id,
+                ChangedAt = _dateTimeProvider.UtcNow(),
+                NewStatus = booking.Status,
+                OldStatus = oldStatus
+            };
+
+            await _outboxMessageRepository.SaveAsync(new OutboxMessage(
+            typeof(BookingStatusChangedEvent).FullName!,
+            JsonSerializer.Serialize(statusChangedEvent),
+            _dateTimeProvider.UtcNow()));
 
             return booking;
         });

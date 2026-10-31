@@ -8,6 +8,7 @@ public class BookingDbContext : DbContext
     public DbSet<Booking> Bookings => Set<Booking>();
     public DbSet<BookingStatusHistory> BookingStatusHistories => Set<BookingStatusHistory>();
     public DbSet<ProcessedEvent> ProcessedEvents => Set<ProcessedEvent>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     public BookingDbContext(DbContextOptions<BookingDbContext> options) : base(options) { }
 
@@ -118,6 +119,36 @@ public class BookingDbContext : DbContext
                 .HasColumnName("processed_at")
                 .HasColumnType("timestamp with time zone")
                 .IsRequired();
+        });
+
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.ToTable("outbox_messages");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.MessageType)
+                .HasColumnName("message_type")
+                .HasColumnType("text")
+                .IsRequired();
+
+            entity.Property(e => e.Payload)
+                .HasColumnName("payload")
+                .HasColumnType("jsonb")
+                .IsRequired();
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at")
+                .HasColumnType("timestamp with time zone")
+                .IsRequired();
+
+            entity.Property(e => e.ProcessedAt)
+                .HasColumnName("processed_at")
+                .HasColumnType("timestamp with time zone");
+            
+            entity.HasIndex(b => b.ProcessedAt)
+                .HasDatabaseName("idx_outbox_messages_non_processed")
+                .HasFilter("processed_at IS NULL");
         });
     }
 

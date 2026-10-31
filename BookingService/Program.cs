@@ -41,6 +41,7 @@ builder.Services.AddDbContext<BookingDbContext>(options =>
 
 builder.Services.AddScoped<BookingRepository>();
 builder.Services.AddScoped<ProcessedEventRepository>();
+builder.Services.AddScoped<OutboxMessageRepository>();
 builder.Services.AddScoped<BookingTransactionManager>();
 
 // ---- Business Services ----
@@ -49,6 +50,7 @@ builder.Services.AddScoped<BookingMapper>();
 builder.Services.AddScoped<BookingStatusHistoryMapper>();
 builder.Services.AddSingleton<ICurrentDateTimeProvider, CurrentDateTimeProvider>();
 builder.Services.AddHostedService<StuckCancellationsJob>();
+builder.Services.AddHostedService<OutboxProcessorJob>();
 
 // ---- Messaging (Rebus + RabbitMQ) ----
 builder.Services.AddSingleton(rabbitMqSettings);
