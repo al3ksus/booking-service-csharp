@@ -72,9 +72,12 @@ namespace BookingService.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CancellationRequestedAt")
-                        .IsUnique()
-                        .HasDatabaseName("idx_bookings_catalog_request_id")
+                        .HasDatabaseName("idx_bookings_cancellation_pending")
                         .HasFilter("status = 4");
+
+                    b.HasIndex("CatalogRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("idx_bookings_catalog_request_id");
 
                     b.HasIndex("CreatedAt")
                         .IsDescending()
