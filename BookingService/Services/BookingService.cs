@@ -26,8 +26,7 @@ public class BookingService
     private readonly BookingEventPublisher _publisher;
     private readonly ICurrentDateTimeProvider _dateTimeProvider;
     private readonly ILogger<BookingService> _logger;
-
-    // [Task 09] Опциональная зависимость — существующие тесты создают сервис без неё
+    
     private readonly INotificationService? _notificationService;
 
     // [Task 10] Опциональная зависимость — существующие тесты создают сервис без неё
@@ -141,6 +140,9 @@ public class BookingService
 
         _logger.LogInformation("Инициирована отмена бронирования с ID: {Id}, новый статус: {Status}",
             id, booking.Status);
+
+        if (_notificationService is not null)
+            await _notificationService.NotifyStatusChangedAsync(booking.Id, oldStatus, booking.Status);
     }
 
     // === ЗАПРОСЫ (Queries) ===
@@ -179,7 +181,7 @@ public class BookingService
             if (booking is null)
             {
                 _logger.LogWarning("Бронирование не найдено по requestId: {RequestId}. Событие проигнорировано.", requestId);
-                return null;
+                return (null, null);
             }
 
             _logger.LogInformation("Найдено бронирование: id={Id}, статус={Status}. Подтверждаем...",
@@ -201,7 +203,7 @@ public class BookingService
             }
 
             if (oldStatus == booking.Status)
-                return booking;
+                return (booking, oldStatus);
             
             var statusChangedEvent = new BookingStatusChangedEvent
             {
@@ -216,7 +218,7 @@ public class BookingService
                 JsonSerializer.Serialize(statusChangedEvent),
                 _dateTimeProvider.UtcNow()));
 
-            return booking;
+            return (booking, oldStatus);
         });
         
         if (result.IsSuccess && result.Booking is not null)
@@ -238,7 +240,7 @@ public class BookingService
             if (booking is null)
             {
                 _logger.LogWarning("Бронирование не найдено по requestId: {RequestId}. Событие проигнорировано.", requestId);
-                return null;
+                return (null, null);
             }
 
             _logger.LogInformation("Найдено бронирование: id={Id}, статус={Status}. Отменяем...",
@@ -263,7 +265,7 @@ public class BookingService
                 JsonSerializer.Serialize(statusChangedEvent),
                 _dateTimeProvider.UtcNow()));
 
-            return booking;
+            return (booking, oldStatus);
         });
         
         if (result.IsSuccess && result.Booking is not null)
@@ -282,7 +284,7 @@ public class BookingService
             if (booking is null)
             {
                 _logger.LogWarning("Бронирование не найдено по requestId: {RequestId}. Событие проигнорировано.", requestId);
-                return null;
+                return (null, null);
             }
 
             var oldStatus = booking.Status;
@@ -303,11 +305,11 @@ public class BookingService
             JsonSerializer.Serialize(statusChangedEvent),
             _dateTimeProvider.UtcNow()));
 
-            return booking;
+            return (booking, oldStatus);
         });
     }
 
-    private async Task<ProcessEventResult> ProcessEventAsync(Guid eventId, Func<Task<Booking?>> handle)
+    private async Task<ProcessEventResult> ProcessEventAsync(Guid eventId, Func<Task<(Booking?, BookingStatus?)>> handle)
     {
         var processedEvent = await _processedEventRepository.FindByEventIdAsync(eventId);
         if (processedEvent is not null)
@@ -332,7 +334,7 @@ public class BookingService
                 return ProcessEventResult.Failed();
             }
 
-            var booking = await handle();
+            var (booking, oldStatus) = await handle();
 
             if (booking == null)
             {
@@ -341,6 +343,9 @@ public class BookingService
             }
             
             await transaction.CommitAsync();
+            
+            if (_notificationService is not null && oldStatus.HasValue)
+                await _notificationService.NotifyStatusChangedAsync(booking.Id, oldStatus.Value, booking.Status);
 
             return ProcessEventResult.Success(booking);
         }
@@ -379,9 +384,9 @@ public class BookingService
 
     private record ProcessEventResult
     {
-        public bool IsSuccess { get; set; }
-        public Booking? Booking { get; set; }
-
+        public bool IsSuccess { get; private init; }
+        public Booking? Booking { get; private init; }
+        
         public static ProcessEventResult Success(Booking booking)
             => new ProcessEventResult { IsSuccess = true, Booking = booking };
         
