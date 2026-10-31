@@ -142,7 +142,7 @@ public class BookingService
             id, booking.Status);
 
         if (_notificationService is not null)
-            await _notificationService.NotifyStatusChangedAsync(booking.Id, oldStatus, booking.Status);
+            await _notificationService.NotifySafeAsync(booking.Id, oldStatus, booking.Status, _logger);
     }
 
     // === ЗАПРОСЫ (Queries) ===
