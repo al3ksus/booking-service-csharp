@@ -1,12 +1,17 @@
 using BookingService.Configuration;
 using BookingService.Exceptions;
+using BookingService.Infrastructure.BackgroundJobs;
 using BookingService.Infrastructure.Data;
+using BookingService.Infrastructure.Data.Transactions;
 using BookingService.Infrastructure.Messaging;
 using BookingService.Infrastructure.Messaging.Contracts;
+using BookingService.Infrastructure.Notifications;
 using BookingService.Mappers;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Http.Resilience;
+using Polly;
 using Rebus.Config;
 using Rebus.Routing.TypeBased;
 using Rebus.ServiceProvider;
@@ -38,15 +43,47 @@ builder.Services.AddDbContext<BookingDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddScoped<BookingRepository>();
+builder.Services.AddScoped<ProcessedEventRepository>();
+builder.Services.AddScoped<OutboxMessageRepository>();
+builder.Services.AddScoped<BookingTransactionManager>();
 
 // ---- Business Services ----
 builder.Services.AddScoped<BookingService.Services.BookingService>();
 builder.Services.AddScoped<BookingMapper>();
+builder.Services.AddScoped<BookingStatusHistoryMapper>();
 builder.Services.AddSingleton<ICurrentDateTimeProvider, CurrentDateTimeProvider>();
+builder.Services.AddHostedService<StuckCancellationsJob>();
+builder.Services.AddHostedService<OutboxProcessorJob>();
 
 // ---- Messaging (Rebus + RabbitMQ) ----
 builder.Services.AddSingleton(rabbitMqSettings);
 builder.Services.AddScoped<BookingEventPublisher>();
+
+// ---- Http ----
+builder.Services
+    .AddHttpClient<INotificationService, NotificationService>(client =>
+    {
+        client.BaseAddress = new Uri(
+            builder.Configuration["NotificationService:BaseUrl"]!);
+    })
+    .AddResilienceHandler("notification-retry", pipeline =>
+    {
+        pipeline.AddRetry(new HttpRetryStrategyOptions
+        {
+            MaxRetryAttempts = builder.Configuration
+                .GetValue<int>("NotificationService:Retry:MaxAttempts"),
+
+            Delay = TimeSpan.FromSeconds(builder.Configuration
+                .GetValue<double>("NotificationService:Retry:DelaySeconds")),
+
+            BackoffType = DelayBackoffType.Constant,
+
+            ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
+                .Handle<HttpRequestException>()
+                .HandleResult(response =>
+                    (int)response.StatusCode >= 500)
+        });
+    });
 
 builder.Services.AddRebus(
     configure => configure

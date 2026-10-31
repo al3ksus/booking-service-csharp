@@ -26,7 +26,7 @@ public class BookingEventsHandler :
             "Получено событие BookingJobConfirmed: eventId={EventId}, requestId={RequestId}",
             message.EventId, message.RequestId);
 
-        await _bookingService.HandleBookingJobConfirmed(message.RequestId);
+        await _bookingService.HandleBookingJobConfirmed(message.RequestId, message.EventId);
     }
 
     public async Task Handle(BookingJobDenied message)
@@ -35,6 +35,6 @@ public class BookingEventsHandler :
             "Получено событие BookingJobDenied: eventId={EventId}, requestId={RequestId}",
             message.EventId, message.RequestId);
 
-        await _bookingService.HandleBookingJobDenied(message.RequestId);
+        await _bookingService.HandleBookingJobDenied(message.RequestId, message.EventId);
     }
 }
