@@ -26,17 +26,18 @@ public class BookingService
     private readonly BookingEventPublisher _publisher;
     private readonly ICurrentDateTimeProvider _dateTimeProvider;
     private readonly ILogger<BookingService> _logger;
+    private readonly IConfiguration _configuration;
     
     private readonly INotificationService? _notificationService;
-
-    // [Task 10] Опциональная зависимость — существующие тесты создают сервис без неё
     private readonly IMemoryCache? _cache;
+    
+    private const string CacheKey = "statistics";
 
     public BookingService(
         BookingRepository repository,
         BookingEventPublisher publisher,
         ICurrentDateTimeProvider dateTimeProvider,
-        ILogger<BookingService> logger, ProcessedEventRepository processedEventRepository, BookingTransactionManager transactionManager, OutboxMessageRepository outboxMessageRepository, INotificationService? notificationService = null,
+        ILogger<BookingService> logger, ProcessedEventRepository processedEventRepository, BookingTransactionManager transactionManager, OutboxMessageRepository outboxMessageRepository, IConfiguration configuration, INotificationService? notificationService = null,
         IMemoryCache? cache = null)
     {
         _repository = repository;
@@ -46,6 +47,7 @@ public class BookingService
         _processedEventRepository = processedEventRepository;
         _transactionManager = transactionManager;
         _outboxMessageRepository = outboxMessageRepository;
+        _configuration = configuration;
         _notificationService = notificationService;
         _cache = cache;
     }
@@ -86,6 +88,8 @@ public class BookingService
 
         await _outboxMessageRepository.SaveAsync(message);
         await transaction.CommitAsync();
+        
+        _cache?.Remove(CacheKey);
 
         _logger.LogInformation("Создано бронирование с ID: {Id}, requestId: {RequestId}", booking.Id, requestId);
 
@@ -137,6 +141,8 @@ public class BookingService
         }
 
         await transaction.CommitAsync();
+        
+        _cache?.Remove(CacheKey);
 
         _logger.LogInformation("Инициирована отмена бронирования с ID: {Id}, новый статус: {Status}",
             id, booking.Status);
@@ -344,6 +350,8 @@ public class BookingService
             
             await transaction.CommitAsync();
             
+            _cache?.Remove(CacheKey);
+            
             if (_notificationService is not null && oldStatus.HasValue)
                 await _notificationService.NotifySafeAsync(booking.Id, oldStatus.Value, booking.Status, _logger);
 
@@ -361,7 +369,16 @@ public class BookingService
 
     public async Task<StatisticsResponse> GetStatistics()
     {
-        return await _repository.GetStatisticsAsync();
+        if (_cache?.TryGetValue(CacheKey, out StatisticsResponse? statistics) == true && statistics is not null)
+            return statistics;
+        
+        var ttl = TimeSpan.FromSeconds(_configuration.GetValue<int>("Cache:StatisticsTtlSeconds"));
+        
+        statistics = await _repository.GetStatisticsAsync();
+
+        _cache?.Set(CacheKey, statistics, ttl);
+
+        return statistics;
     }
 
     public async Task<List<BookingStatusHistory>> GetBookingHistory(long bookingId)

@@ -59,6 +59,9 @@ builder.Services.AddHostedService<OutboxProcessorJob>();
 builder.Services.AddSingleton(rabbitMqSettings);
 builder.Services.AddScoped<BookingEventPublisher>();
 
+// ---- Cache ----
+builder.Services.AddMemoryCache();
+
 // ---- Http ----
 builder.Services
     .AddHttpClient<INotificationService, NotificationService>(client =>
