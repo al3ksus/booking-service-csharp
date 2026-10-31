@@ -99,7 +99,7 @@ public class BookingService
     /// </summary>
     public async Task CancelBooking(long id)
     {
-        var transaction = await _transactionManager.BeginTransactionAsync();
+        await using var transaction = await _transactionManager.BeginTransactionAsync();
         
         var booking = await _repository.FindByIdAsync(id)
             ?? throw new BusinessException($"Бронирование с указанным id: '{id}' не найдено.");

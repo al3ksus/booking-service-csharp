@@ -32,49 +32,58 @@ public class OutboxProcessorJob : BackgroundService
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            await using var scope = _serviceScopeFactory.CreateAsyncScope();
-
-            var outboxMessagesRepository = scope.ServiceProvider.GetRequiredService<OutboxMessageRepository>();
-            var bus = scope.ServiceProvider.GetRequiredService<IBus>();
-
-            var messages = await outboxMessagesRepository.GetNonProcessedMessagesAsync();
-
-            _logger.LogInformation("Non-processed messages count: {Count}", messages.Count);
-
-            foreach (var message in messages)
+            try
             {
-                if (!_messageTypes.TryGetValue(message.MessageType, out var messageType))
+                await using var scope = _serviceScopeFactory.CreateAsyncScope();
+
+                var outboxMessagesRepository = scope.ServiceProvider.GetRequiredService<OutboxMessageRepository>();
+                var bus = scope.ServiceProvider.GetRequiredService<IBus>();
+
+                var messages = await outboxMessagesRepository.GetNonProcessedMessagesAsync();
+
+                _logger.LogInformation("Non-processed messages count: {Count}", messages.Count);
+
+                foreach (var message in messages)
                 {
-                    _logger.LogWarning("Неизвестный тип сообщения. MessageId - {MessageId}", message.Id);
-                    
+                    if (!_messageTypes.TryGetValue(message.MessageType, out var messageType))
+                    {
+                        _logger.LogWarning("Неизвестный тип сообщения. MessageId - {MessageId}", message.Id);
+
+                        try
+                        {
+                            message.MargAsProcessed(DateTimeOffset.UtcNow);
+                            await outboxMessagesRepository.SaveAsync(message);
+                        }
+                        catch (Exception e)
+                        {
+                            _logger.LogError(
+                                "Ошибка сохранения сообщения с неизвестным типом, Id - {MessageId}. {Message}",
+                                message.Id, e.Message);
+                        }
+
+                        continue;
+                    }
+
                     try
                     {
+                        var request = JsonSerializer.Deserialize(message.Payload, messageType);
+                        await bus.Publish(request);
                         message.MargAsProcessed(DateTimeOffset.UtcNow);
                         await outboxMessagesRepository.SaveAsync(message);
+
+                        _logger.LogError("Сообщение с Id - {MessageId} Успешно обработано", message.Id);
                     }
                     catch (Exception e)
                     {
-                        _logger.LogError("Ошибка сохранения сообщения с неизвестным типом, Id - {MessageId}. {Message}", message.Id, e.Message);
+                        _logger.LogError("Ошибка обработки сообщения с Id - {MessageId}. {Message}", message.Id,
+                            e.Message);
                     }
-                    
-                    continue;
-                }
-
-                try
-                {
-                    var request = JsonSerializer.Deserialize(message.Payload, messageType);
-                    await bus.Publish(request);
-                    message.MargAsProcessed(DateTimeOffset.UtcNow);
-                    await outboxMessagesRepository.SaveAsync(message);
-                    
-                    _logger.LogError("Сообщение с Id - {MessageId} Успешно обработано", message.Id);
-                }
-                catch (Exception e)
-                {
-                    _logger.LogError("Ошибка обработки сообщения с Id - {MessageId}. {Message}", message.Id, e.Message);
                 }
             }
-            
+            catch (Exception e)
+            {
+                _logger.LogError(e.Message);
+            }
         }
     }
 }

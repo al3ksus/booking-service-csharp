@@ -60,7 +60,8 @@ public abstract class IntegrationTestBase : IAsyncLifetime
             new CurrentDateTimeProvider(),
             NullLogger<Services.BookingService>.Instance,
             new ProcessedEventRepository(Context),
-            new BookingTransactionManager(Context));
+            new BookingTransactionManager(Context),
+            new OutboxMessageRepository(Context));
     }
 
     public async Task DisposeAsync()
