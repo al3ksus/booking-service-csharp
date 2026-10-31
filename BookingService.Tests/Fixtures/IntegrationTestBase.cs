@@ -1,7 +1,9 @@
 using BookingService.Configuration;
 using BookingService.Infrastructure.Data;
+using BookingService.Infrastructure.Data.Transactions;
 using BookingService.Infrastructure.Messaging;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Rebus.Bus;
@@ -57,7 +59,10 @@ public abstract class IntegrationTestBase : IAsyncLifetime
             new BookingRepository(Context),
             publisher,
             new CurrentDateTimeProvider(),
-            NullLogger<Services.BookingService>.Instance);
+            NullLogger<Services.BookingService>.Instance,
+            new ProcessedEventRepository(Context),
+            new BookingTransactionManager(Context),
+            new OutboxMessageRepository(Context));
     }
 
     public async Task DisposeAsync()
