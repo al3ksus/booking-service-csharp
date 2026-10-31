@@ -72,8 +72,13 @@ namespace BookingService.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CancellationRequestedAt")
-                        .HasDatabaseName("idx_bookings_cancellation_pending")
+                        .IsUnique()
+                        .HasDatabaseName("idx_bookings_catalog_request_id")
                         .HasFilter("status = 4");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending()
+                        .HasDatabaseName("idx_bookings_created_at");
 
                     b.HasIndex("ResourceId")
                         .HasDatabaseName("idx_bookings_resource_id");
@@ -83,6 +88,12 @@ namespace BookingService.Infrastructure.Data.Migrations
 
                     b.HasIndex("UserId")
                         .HasDatabaseName("idx_bookings_user_id");
+
+                    b.HasIndex("UserId", "Status")
+                        .HasDatabaseName("idx_bookings_user_id_status");
+
+                    b.HasIndex("ResourceId", "BookedFrom", "BookedTo")
+                        .HasDatabaseName("idx_bookings_resource_id_dates");
 
                     b.ToTable("bookings", (string)null);
                 });

@@ -77,7 +77,7 @@ public class BookingDbContext : DbContext
                 .HasDatabaseName("idx_bookings_cancellation_pending")
                 .HasFilter("status = 4");
             
-            entity.HasIndex(b => b.CancellationRequestedAt)
+            entity.HasIndex(b => b.CatalogRequestId)
                 .HasDatabaseName("idx_bookings_catalog_request_id")
                 .IsUnique();
 
