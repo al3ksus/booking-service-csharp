@@ -27,17 +27,17 @@ public class BookingService
     private readonly ICurrentDateTimeProvider _dateTimeProvider;
     private readonly ILogger<BookingService> _logger;
     
-    private readonly IConfiguration? _configuration;
     private readonly INotificationService? _notificationService;
     private readonly IMemoryCache? _cache;
-    
+
+    private readonly int _cacheTtl;
     private const string CacheKey = "statistics";
 
     public BookingService(
         BookingRepository repository,
         BookingEventPublisher publisher,
         ICurrentDateTimeProvider dateTimeProvider,
-        ILogger<BookingService> logger, ProcessedEventRepository processedEventRepository, BookingTransactionManager transactionManager, OutboxMessageRepository outboxMessageRepository, IConfiguration? configuration, INotificationService? notificationService = null,
+        ILogger<BookingService> logger, ProcessedEventRepository processedEventRepository, BookingTransactionManager transactionManager, OutboxMessageRepository outboxMessageRepository, IConfiguration? configuration = null, INotificationService? notificationService = null,
         IMemoryCache? cache = null)
     {
         _repository = repository;
@@ -47,9 +47,9 @@ public class BookingService
         _processedEventRepository = processedEventRepository;
         _transactionManager = transactionManager;
         _outboxMessageRepository = outboxMessageRepository;
-        _configuration = configuration;
         _notificationService = notificationService;
         _cache = cache;
+        _cacheTtl = configuration?.GetValue<int?>("Cache:StatisticsTtlSeconds") ?? 60;
     }
 
     // === КОМАНДЫ (Use Cases) ===
@@ -373,12 +373,8 @@ public class BookingService
             return statistics;
         
         statistics = await _repository.GetStatisticsAsync();
-
-        if (_configuration is null)
-            return statistics;
         
-        var ttl = TimeSpan.FromSeconds(_configuration.GetValue<int>("Cache:StatisticsTtlSeconds"));
-
+        var ttl = TimeSpan.FromSeconds(_cacheTtl);
         _cache?.Set(CacheKey, statistics, ttl);
 
         return statistics;
